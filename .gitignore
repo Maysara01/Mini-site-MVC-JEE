@@ -2,3 +2,4 @@ build/
 bin/
 target/
 *.class
+src/main/java/db.properties

@@ -1,7 +1,7 @@
 package com.exemple.web;
 
+import com.exemple.dao.ProduitDao;
 import com.exemple.model.Produit;
-import com.exemple.model.ProduitDAO;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -9,14 +9,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.List;
-import java.util.Locale;
-import java.util.stream.Collectors;
 
 @WebServlet("/produits")
 public class ProduitServlet extends HttpServlet {
@@ -24,13 +20,13 @@ public class ProduitServlet extends HttpServlet {
     private static final String LIST_VIEW = "/WEB-INF/views/produits/list.jsp";
     private static final String FORM_VIEW = "/WEB-INF/views/produits/form.jsp";
 
-    private ProduitDAO dao;
+    private ProduitDao dao;
 
     @Override
     public void init() throws ServletException {
-        dao = (ProduitDAO) getServletContext().getAttribute("produitDAO");
+        dao = (ProduitDao) getServletContext().getAttribute("produitDao");
         if (dao == null) {
-            throw new ServletException("ProduitDAO absent du ServletContext (AppInitListener ?)");
+            throw new ServletException("ProduitDao absent du ServletContext (AppInitListener ?)");
         }
     }
 
@@ -40,23 +36,19 @@ public class ProduitServlet extends HttpServlet {
         String action = req.getParameter("action");
 
         if (action == null) {
+            // flash message: moved from session to request, shown once
             HttpSession session = req.getSession(false);
             if (session != null && session.getAttribute("flash") != null) {
                 req.setAttribute("flash", session.getAttribute("flash"));
                 session.removeAttribute("flash");
             }
 
+            // search + sort (the DAO checks the "tri" value itself)
             String q = trim(req.getParameter("q"));
-            List<Produit> liste = dao.findAll();
-            if (!q.isEmpty()) {
-                String needle = q.toLowerCase(Locale.ROOT);
-                liste = liste.stream()
-                        .filter(p -> p.getNom() != null
-                                  && p.getNom().toLowerCase(Locale.ROOT).contains(needle))
-                        .collect(Collectors.toList());
-            }
-            req.setAttribute("produits", liste);
+            String tri = req.getParameter("tri");
+            req.setAttribute("produits", dao.rechercher(q, tri));
             req.setAttribute("q", q);
+            req.setAttribute("tri", tri);
 
             req.getRequestDispatcher(LIST_VIEW).forward(req, resp);
 
@@ -65,8 +57,7 @@ public class ProduitServlet extends HttpServlet {
             req.getRequestDispatcher(FORM_VIEW).forward(req, resp);
 
         } else if ("edit".equals(action)) {
-            Long id = parseId(req.getParameter("id"));
-            Produit p = dao.findById(id);
+            Produit p = chercher(parseId(req.getParameter("id")));
             if (p == null) {
                 resp.sendError(HttpServletResponse.SC_NOT_FOUND);
                 return;
@@ -78,31 +69,36 @@ public class ProduitServlet extends HttpServlet {
             resp.sendError(HttpServletResponse.SC_NOT_FOUND);
         }
     }
-    
+
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
         req.setCharacterEncoding("UTF-8");
 
-        // ---- DELETE ----
-        if ("delete".equals(req.getParameter("action"))) {
-            Produit p = dao.findById(parseId(req.getParameter("id")));
-            if (p == null) {
-                resp.sendError(HttpServletResponse.SC_NOT_FOUND);
-                return;
-            }
-            dao.delete(p.getId());
-            req.getSession().setAttribute("flash", "Produit « " + p.getNom() + " » supprimé.");
-            resp.sendRedirect(req.getContextPath() + "/produits");
-            return;
-        }
 
+	     // ---- DELETE ----
+	        if ("delete".equals(req.getParameter("action"))) {
+	            Produit p = chercher(parseId(req.getParameter("id")));
+	            if (p == null) {
+	                resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+	                return;
+	            }
+	            try {
+	                dao.supprimer(p.getId());
+	                req.getSession().setAttribute("flash", "Produit « " + p.getNom() + " » supprimé.");
+	            } catch (com.exemple.dao.ContrainteException e) {
+	                req.getSession().setAttribute("flash", "Impossible de supprimer « " + p.getNom() + " » : des ventes y sont associées.");
+	            }
+	            resp.sendRedirect(req.getContextPath() + "/produits");
+	            return;
+	        }
+	        
         // ---- CREATE / UPDATE ----
         String idParam = req.getParameter("id");
         Long id = null;
         if (idParam != null && !idParam.isBlank()) {
             id = parseId(idParam);
-            if (dao.findById(id) == null) {
+            if (chercher(id) == null) {
                 resp.sendError(HttpServletResponse.SC_NOT_FOUND);
                 return;
             }
@@ -160,7 +156,11 @@ public class ProduitServlet extends HttpServlet {
             return;
         }
 
-        dao.save(produit);
+        if (id == null) {
+            dao.creer(produit);
+        } else {
+            dao.modifier(produit);
+        }
         req.getSession().setAttribute("flash", "Produit « " + nom + " » enregistré.");
         resp.sendRedirect(req.getContextPath() + "/produits");
     }
@@ -170,12 +170,17 @@ public class ProduitServlet extends HttpServlet {
         return s == null ? "" : s.trim();
     }
 
-
+    // returns null if the id is missing or not a number
     private static Long parseId(String s) {
         try {
             return Long.valueOf(s);
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    // null if the id is null or unknown (trouverParId takes a primitive long)
+    private Produit chercher(Long id) {
+        return (id == null) ? null : dao.trouverParId(id).orElse(null);
     }
 }

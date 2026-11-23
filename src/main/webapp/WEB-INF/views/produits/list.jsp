@@ -4,17 +4,25 @@
 <c:set var="ctx" value="${pageContext.request.contextPath}"/>
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>Produits</title>
-   <%@ include file="/WEB-INF/views/header.jsp" %>
-   </head>
+<head>
+    <meta charset="UTF-8">
+    <title>Produits</title>
+    <%@ include file="/WEB-INF/views/header.jsp" %>
+</head>
 <body class="${bodyClass}">
     <h1>Catalogue de produits</h1>
-    
+
     <form action="${ctx}/produits" method="get" style="margin:10px 0">
-	    <input type="text" name="q" placeholder="Rechercher par nom" value="<c:out value='${q}'/>">
-	    <button type="submit">Rechercher</button>
-	    <a href="${ctx}/produits">Réinitialiser</a>
-	</form>
+        <input type="text" name="q" placeholder="Rechercher par nom" value="<c:out value='${q}'/>">
+        <select name="tri">
+            <option value="nom"       ${empty tri or tri == 'nom' ? 'selected' : ''}>Nom</option>
+            <option value="prix"      ${tri == 'prix' ? 'selected' : ''}>Prix croissant</option>
+            <option value="prix_desc" ${tri == 'prix_desc' ? 'selected' : ''}>Prix décroissant</option>
+            <option value="stock"     ${tri == 'stock' ? 'selected' : ''}>Stock</option>
+        </select>
+        <button type="submit">Rechercher</button>
+        <a href="${ctx}/produits">Réinitialiser</a>
+    </form>
 
     <c:if test="${not empty flash}">
         <p style="color:green"><c:out value="${flash}"/></p>
@@ -22,7 +30,7 @@
 
     <a href="${ctx}/produits?action=new">Ajouter un produit</a>
 
-    <c:if test="${empty produits}">S
+    <c:if test="${empty produits}">
         <p>Aucun produit</p>
     </c:if>
 
@@ -40,6 +48,11 @@
                           onsubmit="return confirm('Supprimer ce produit ?');">
                         <input type="hidden" name="id" value="${p.id}">
                         <button type="submit">Supprimer</button>
+                    </form>
+                    <form action="${ctx}/ventes" method="post" style="display:inline; margin-left:8px;">
+                        <input type="hidden" name="produitId" value="${p.id}">
+                        <input type="number" name="quantite" value="1" min="1" style="width:50px;" required>
+                        <button type="submit">Vendre</button>
                     </form>
                 </td>
             </tr>
